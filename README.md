@@ -118,6 +118,69 @@ go run main.go remove-labels quay.io/redhat-user-workloads/bcook-tenant/simple-c
   version=1.0.0
 ```
 
+## Testing
+
+The project includes comprehensive tests that verify all functionality. Tests can be run with either a local registry (recommended) or external registries.
+
+### Local Registry Testing (Recommended)
+
+The project includes a local container registry setup for self-contained testing. This approach is faster, more reliable, and doesn't require external registry access.
+
+#### Prerequisites
+
+- **podman** - Container runtime for running the local registry
+- **Go 1.21+** - For building and running tests
+
+#### Quick Test
+
+```bash
+# Run all tests with local registry (setup, test, cleanup)
+./scripts/test-local.sh
+```
+
+#### Manual Testing
+
+```bash
+# Setup local registry
+./scripts/setup-test-registry.sh
+
+# Run tests
+go test -v
+
+# Cleanup (optional - script handles this automatically)
+./scripts/cleanup-test-registry.sh
+```
+
+#### Test Configuration
+
+Tests use the local registry by default:
+- **Registry**: `localhost:5000`
+- **Test Image**: `localhost:5000/test/labeltest:latest`
+- **Test Labels**: Pre-configured test labels for all operations
+
+#### Environment Variables
+
+You can override the test configuration:
+
+```bash
+# Use external registry for testing
+export LABEL_MOD_TEST_REPO="quay.io/bcook/labeltest/test"
+export LABEL_MOD_TEST_TAG="has-label"
+
+# Run tests
+go test -v
+```
+
+### External Registry Testing
+
+Tests can also run against external registries by setting environment variables:
+
+```bash
+export LABEL_MOD_TEST_REPO="quay.io/bcook/labeltest/test"
+export LABEL_MOD_TEST_TAG="has-label"
+go test -v
+```
+
 ## How It Works
 
 1. **Manifest Retrieval**: Fetches the image manifest from the registry
