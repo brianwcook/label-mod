@@ -23,6 +23,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y podman
+          
+          # Configure podman for CI environment
+          sudo mkdir -p /etc/containers
+          echo '{"default":[{"type":"insecureAcceptAnything"}]}' | sudo tee /etc/containers/policy.json
 
       - name: Configure podman for local registry
         run: |
@@ -50,6 +54,10 @@ jobs:
           podman --version
           echo "=== Podman info ==="
           podman info
+          echo "=== Podman capabilities ==="
+          podman system connection list || true
+          echo "=== Podman storage ==="
+          podman system info || true
           echo "=== Registry config ==="
           cat ~/.config/containers/registries.conf
           echo "=== Starting test registry ==="
