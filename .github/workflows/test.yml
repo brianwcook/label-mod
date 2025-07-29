@@ -34,6 +34,10 @@ jobs:
           location = "localhost:5000"
           insecure = true
           EOF
+          
+          # Also configure for rootless podman
+          sudo mkdir -p /etc/containers
+          sudo cp ~/.config/containers/registries.conf /etc/containers/
 
       - name: Build
         run: |
@@ -41,16 +45,31 @@ jobs:
 
       - name: Setup test registry
         run: |
+          echo "=== Podman version ==="
+          podman --version
+          echo "=== Podman info ==="
+          podman info
+          echo "=== Registry config ==="
+          cat ~/.config/containers/registries.conf
+          echo "=== Starting test registry ==="
           ./scripts/setup-test-registry.sh
 
       - name: Run tests
         run: |
+          echo "=== Test binary ==="
+          ls -la bin/
+          echo "=== Running tests ==="
           go test -v
 
       - name: Cleanup test registry
         if: always()
         run: |
+          echo "=== Cleanup ==="
           ./scripts/cleanup-test-registry.sh
+          echo "=== Final podman containers ==="
+          podman ps -a || true
+          echo "=== Final podman volumes ==="
+          podman volume ls || true
 
       - name: Build all platforms
         run: |
