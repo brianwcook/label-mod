@@ -631,3 +631,291 @@ func TestLabelModJSONOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestLabelModDigestReferences(t *testing.T) {
+	config := getTestConfig()
+	imageRef := ensureTestImage(t, config)
+	if imageRef == "" {
+		return
+	}
+
+	// First, get the digest of our test image
+	output, err := runCommand("test", imageRef)
+	if err != nil {
+		t.Fatalf("Failed to test image: %v", err)
+	}
+
+	result, err := parseJSONResult(output)
+	if err != nil {
+		t.Fatalf("Failed to parse test result: %v", err)
+	}
+
+	if !result.Success {
+		t.Fatalf("Test image not available: %s", result.Error)
+	}
+
+	// Create digest reference
+	digestRef := fmt.Sprintf("%s@%s", config.TestRepo, result.NewDigest)
+
+	t.Run("TestDigestReference", func(t *testing.T) {
+		// Test that we can read from a digest reference
+		output, err := runCommand("test", digestRef)
+		if err != nil {
+			t.Fatalf("Failed to test digest reference: %v", err)
+		}
+
+		result, err := parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse digest test result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Digest reference test failed: %s", result.Error)
+		}
+
+		if result.ImageRef != digestRef {
+			t.Errorf("Expected image_ref to be %s, got %s", digestRef, result.ImageRef)
+		}
+
+		// For read-only operations, the digest should be the same
+		if result.NewDigest == "" {
+			t.Errorf("Expected new_digest to be set for read-only operation")
+		}
+	})
+
+	t.Run("TestDigestReferenceWithoutTag", func(t *testing.T) {
+		// Test that we get an error when trying to modify without a tag
+		uniqueLabel := fmt.Sprintf("test.digest.label.%d", time.Now().Unix())
+
+		// First add a label to remove
+		output, err := runCommand("update-labels", imageRef, fmt.Sprintf("%s=value", uniqueLabel))
+		if err != nil {
+			t.Fatalf("Failed to add test label: %v", err)
+		}
+
+		result, err := parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse update result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Failed to add test label: %s", result.Error)
+		}
+
+		// Now try to remove it using digest reference without tag
+		output, err = runCommand("remove-labels", digestRef, uniqueLabel)
+		if err == nil {
+			t.Error("Expected error when removing label from digest reference without tag")
+		}
+
+		result, err = parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse error result: %v", err)
+		}
+
+		if result.Success {
+			t.Error("Expected success to be false for digest reference without tag")
+		}
+
+		if !strings.Contains(result.Error, "Cannot push to digest reference without specifying a tag") {
+			t.Errorf("Expected error about digest reference requiring tag, got: %s", result.Error)
+		}
+	})
+
+	t.Run("TestDigestReferenceWithTag", func(t *testing.T) {
+		// Test that we can modify using digest reference with a tag
+		uniqueLabel := fmt.Sprintf("test.digest.tag.label.%d", time.Now().Unix())
+		uniqueTag := fmt.Sprintf("digest-test-%d", time.Now().Unix())
+
+		// First add a label to remove
+		output, err := runCommand("update-labels", imageRef, fmt.Sprintf("%s=value", uniqueLabel))
+		if err != nil {
+			t.Fatalf("Failed to add test label: %v", err)
+		}
+
+		result, err := parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse update result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Failed to add test label: %s", result.Error)
+		}
+
+		// Get the new digest
+		output, err = runCommand("test", imageRef)
+		if err != nil {
+			t.Fatalf("Failed to get updated image digest: %v", err)
+		}
+
+		result, err = parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse test result: %v", err)
+		}
+
+		// Now remove the label using digest reference with tag
+		digestRef = fmt.Sprintf("%s@%s", config.TestRepo, result.NewDigest)
+		output, err = runCommand("remove-labels", digestRef, uniqueLabel, "--tag", uniqueTag)
+		if err != nil {
+			t.Fatalf("Failed to remove label from digest reference with tag: %v", err)
+		}
+
+		result, err = parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse remove result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Failed to remove label from digest reference: %s", result.Error)
+		}
+
+		if result.ImageRef != digestRef {
+			t.Errorf("Expected image_ref to be %s, got %s", digestRef, result.ImageRef)
+		}
+
+		if len(result.TaggedAs) != 1 {
+			t.Errorf("Expected 1 tagged image, got %d", len(result.TaggedAs))
+		}
+
+		expectedTag := fmt.Sprintf("%s:%s", config.TestRepo, uniqueTag)
+		if result.TaggedAs[0] != expectedTag {
+			t.Errorf("Expected tagged image to be %s, got %s", expectedTag, result.TaggedAs[0])
+		}
+
+		// Verify the label was removed
+		if !contains(result.Removed, uniqueLabel) {
+			t.Errorf("Expected label %s to be in removed list", uniqueLabel)
+		}
+	})
+
+	t.Run("TestDigestReferenceUpdateLabels", func(t *testing.T) {
+		// Test updating labels using digest reference
+		uniqueLabel := fmt.Sprintf("test.digest.update.label.%d", time.Now().Unix())
+		uniqueTag := fmt.Sprintf("digest-update-test-%d", time.Now().Unix())
+
+		// Get current digest
+		output, err := runCommand("test", imageRef)
+		if err != nil {
+			t.Fatalf("Failed to get image digest: %v", err)
+		}
+
+		result, err := parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse test result: %v", err)
+		}
+
+		digestRef = fmt.Sprintf("%s@%s", config.TestRepo, result.NewDigest)
+
+		// Update label using digest reference with tag
+		output, err = runCommand("update-labels", digestRef, fmt.Sprintf("%s=new-value", uniqueLabel), "--tag", uniqueTag)
+		if err != nil {
+			t.Fatalf("Failed to update label using digest reference: %v", err)
+		}
+
+		result, err = parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse update result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Failed to update label using digest reference: %s", result.Error)
+		}
+
+		if len(result.TaggedAs) != 1 {
+			t.Errorf("Expected 1 tagged image, got %d", len(result.TaggedAs))
+		}
+
+		expectedTag := fmt.Sprintf("%s:%s", config.TestRepo, uniqueTag)
+		if result.TaggedAs[0] != expectedTag {
+			t.Errorf("Expected tagged image to be %s, got %s", expectedTag, result.TaggedAs[0])
+		}
+
+		// Verify the label was updated
+		if result.Updated[uniqueLabel] != "new-value" {
+			t.Errorf("Expected label %s to be updated to 'new-value', got %s", uniqueLabel, result.Updated[uniqueLabel])
+		}
+	})
+
+	t.Run("TestDigestReferenceModifyLabels", func(t *testing.T) {
+		// Test modify-labels command using digest reference
+		uniqueRemoveLabel := fmt.Sprintf("test.digest.modify.remove.%d", time.Now().Unix())
+		uniqueUpdateLabel := fmt.Sprintf("test.digest.modify.update.%d", time.Now().Unix())
+		uniqueTag := fmt.Sprintf("digest-modify-test-%d", time.Now().Unix())
+
+		// First add labels to work with
+		output, err := runCommand("update-labels", imageRef,
+			fmt.Sprintf("%s=old-value", uniqueRemoveLabel),
+			fmt.Sprintf("%s=old-value", uniqueUpdateLabel))
+		if err != nil {
+			t.Fatalf("Failed to add test labels: %v", err)
+		}
+
+		result, err := parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse update result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Failed to add test labels: %s", result.Error)
+		}
+
+		// Get current digest
+		output, err = runCommand("test", imageRef)
+		if err != nil {
+			t.Fatalf("Failed to get image digest: %v", err)
+		}
+
+		result, err = parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse test result: %v", err)
+		}
+
+		digestRef = fmt.Sprintf("%s@%s", config.TestRepo, result.NewDigest)
+
+		// Modify labels using digest reference
+		output, err = runCommand("modify-labels", digestRef,
+			"--remove", uniqueRemoveLabel,
+			"--update", fmt.Sprintf("%s=new-value", uniqueUpdateLabel),
+			"--tag", uniqueTag)
+		if err != nil {
+			t.Fatalf("Failed to modify labels using digest reference: %v", err)
+		}
+
+		result, err = parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse modify result: %v", err)
+		}
+
+		if !result.Success {
+			t.Fatalf("Failed to modify labels using digest reference: %s", result.Error)
+		}
+
+		if len(result.TaggedAs) != 1 {
+			t.Errorf("Expected 1 tagged image, got %d", len(result.TaggedAs))
+		}
+
+		expectedTag := fmt.Sprintf("%s:%s", config.TestRepo, uniqueTag)
+		if result.TaggedAs[0] != expectedTag {
+			t.Errorf("Expected tagged image to be %s, got %s", expectedTag, result.TaggedAs[0])
+		}
+
+		// Verify the labels were modified
+		if !contains(result.Removed, uniqueRemoveLabel) {
+			t.Errorf("Expected label %s to be in removed list", uniqueRemoveLabel)
+		}
+
+		if result.Updated[uniqueUpdateLabel] != "new-value" {
+			t.Errorf("Expected label %s to be updated to 'new-value', got %s", uniqueUpdateLabel, result.Updated[uniqueUpdateLabel])
+		}
+	})
+}
+
+// Helper function to check if a slice contains a string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}

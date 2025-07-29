@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
@@ -115,6 +116,28 @@ func outputJSON(result Result) {
 	}
 }
 
+// tagImage handles tagging an image (always allowed)
+func tagImage(ref name.Reference, newImg v1.Image, auth authn.Authenticator) error {
+	return remote.Write(ref, newImg, remote.WithAuth(auth))
+}
+
+// pushImageWithDigestHandling handles pushing an image with proper digest reference handling
+func pushImageWithDigestHandling(ref name.Reference, newImg v1.Image, auth authn.Authenticator, newTags []string) error {
+	// Check if this is a digest reference
+	if _, ok := ref.(name.Digest); ok {
+		// For digest references, we can't push back to the same digest
+		// We need to either tag it or create a new digest reference
+		if len(newTags) == 0 {
+			return fmt.Errorf("cannot push to digest reference without specifying a tag - use --tag to specify a new tag")
+		}
+		// Don't push to the original digest reference, only tag
+		return nil
+	}
+
+	// Push the updated image to the original reference
+	return remote.Write(ref, newImg, remote.WithAuth(auth))
+}
+
 func parseArgs(args []string) ([]string, []string) {
 	var labelsToRemove []string
 	var newTags []string
@@ -219,6 +242,16 @@ func removeLabels(imageRef string, labelsToRemove []string, newTags []string) Re
 		return result
 	}
 
+	// Check if this is a digest reference before attempting to modify
+	if _, ok := ref.(name.Digest); ok {
+		// For digest references, we can't push back to the same digest
+		// We need to either tag it or create a new digest reference
+		if len(newTags) == 0 {
+			result.Error = "Cannot push to digest reference without specifying a tag. Use --tag to specify a new tag."
+			return result
+		}
+	}
+
 	// Remove labels
 	removed := false
 	for _, label := range labelsToRemove {
@@ -242,7 +275,7 @@ func removeLabels(imageRef string, labelsToRemove []string, newTags []string) Re
 	}
 
 	// Push the updated image
-	if err := remote.Write(ref, newImg, remote.WithAuth(auth)); err != nil {
+	if err := pushImageWithDigestHandling(ref, newImg, auth, newTags); err != nil {
 		result.Error = fmt.Sprintf("Error pushing updated image: %v", err)
 		return result
 	}
@@ -266,7 +299,7 @@ func removeLabels(imageRef string, labelsToRemove []string, newTags []string) Re
 				return result
 			}
 
-			if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
+			if err := tagImage(newRef, newImg, auth); err != nil {
 				result.Error = fmt.Sprintf("Error tagging image: %v", err)
 				return result
 			}
@@ -320,6 +353,16 @@ func updateLabels(imageRef string, labelUpdates map[string]string, newTags []str
 		return result
 	}
 
+	// Check if this is a digest reference before attempting to modify
+	if _, ok := ref.(name.Digest); ok {
+		// For digest references, we can't push back to the same digest
+		// We need to either tag it or create a new digest reference
+		if len(newTags) == 0 {
+			result.Error = "Cannot push to digest reference without specifying a tag. Use --tag to specify a new tag."
+			return result
+		}
+	}
+
 	// Update labels
 	if config.Config.Labels == nil {
 		config.Config.Labels = make(map[string]string)
@@ -338,7 +381,7 @@ func updateLabels(imageRef string, labelUpdates map[string]string, newTags []str
 	}
 
 	// Push the updated image
-	if err := remote.Write(ref, newImg, remote.WithAuth(auth)); err != nil {
+	if err := pushImageWithDigestHandling(ref, newImg, auth, newTags); err != nil {
 		result.Error = fmt.Sprintf("Error pushing updated image: %v", err)
 		return result
 	}
@@ -362,7 +405,7 @@ func updateLabels(imageRef string, labelUpdates map[string]string, newTags []str
 				return result
 			}
 
-			if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
+			if err := tagImage(newRef, newImg, auth); err != nil {
 				result.Error = fmt.Sprintf("Error tagging image: %v", err)
 				return result
 			}
@@ -417,6 +460,16 @@ func modifyLabels(imageRef string, labelsToRemove []string, labelUpdates map[str
 		return result
 	}
 
+	// Check if this is a digest reference before attempting to modify
+	if _, ok := ref.(name.Digest); ok {
+		// For digest references, we can't push back to the same digest
+		// We need to either tag it or create a new digest reference
+		if len(newTags) == 0 {
+			result.Error = "Cannot push to digest reference without specifying a tag. Use --tag to specify a new tag."
+			return result
+		}
+	}
+
 	// Remove labels
 	for _, label := range labelsToRemove {
 		if _, exists := config.Config.Labels[label]; exists {
@@ -443,7 +496,7 @@ func modifyLabels(imageRef string, labelsToRemove []string, labelUpdates map[str
 	}
 
 	// Push the updated image
-	if err := remote.Write(ref, newImg, remote.WithAuth(auth)); err != nil {
+	if err := pushImageWithDigestHandling(ref, newImg, auth, newTags); err != nil {
 		result.Error = fmt.Sprintf("Error pushing updated image: %v", err)
 		return result
 	}
@@ -467,7 +520,7 @@ func modifyLabels(imageRef string, labelsToRemove []string, labelUpdates map[str
 				return result
 			}
 
-			if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
+			if err := tagImage(newRef, newImg, auth); err != nil {
 				result.Error = fmt.Sprintf("Error tagging image: %v", err)
 				return result
 			}
