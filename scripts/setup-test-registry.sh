@@ -18,6 +18,7 @@ EOF
 podman run -d --name test-registry -p 5000:5000 \
   -e REGISTRY_STORAGE_DELETE_ENABLED=true \
   -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
+  -e REGISTRY_STORAGE_FILESYSTEM_MAXTHREADS=100 \
   -v test-registry-data:/var/lib/registry \
   registry:2
 
@@ -30,6 +31,10 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         echo "Registry failed to start"
+        echo "=== Registry container logs ==="
+        podman logs test-registry || true
+        echo "=== Registry container status ==="
+        podman ps -a || true
         exit 1
     fi
     sleep 1
@@ -52,19 +57,42 @@ CMD ["echo", "Hello from test image"]
 EOF
 
 # Build the test image
-podman build -f Dockerfile.test -t localhost:5000/test/labeltest:latest .
+echo "Building test image..."
+if ! podman build -f Dockerfile.test -t localhost:5000/test/labeltest:latest .; then
+    echo "Failed to build test image"
+    exit 1
+fi
 
 # Push to local registry with TLS verification disabled
-podman push --tls-verify=false localhost:5000/test/labeltest:latest
+echo "Pushing test image..."
+if ! podman push --tls-verify=false localhost:5000/test/labeltest:latest; then
+    echo "Failed to push test image"
+    echo "=== Podman images ==="
+    podman images || true
+    exit 1
+fi
 
 # Create a digest reference by pulling and getting the digest
 echo "Creating digest reference..."
-podman pull --tls-verify=false localhost:5000/test/labeltest:latest
+if ! podman pull --tls-verify=false localhost:5000/test/labeltest:latest; then
+    echo "Failed to pull test image"
+    exit 1
+fi
+
 DIGEST=$(podman images --digests | grep "localhost:5000/test/labeltest" | awk '{print $3}' | head -1)
+if [ -z "$DIGEST" ]; then
+    echo "Failed to get image digest"
+    echo "=== Podman images with digests ==="
+    podman images --digests || true
+    exit 1
+fi
 echo "Image digest: $DIGEST"
 
 # Tag with digest
-podman tag localhost:5000/test/labeltest:latest localhost:5000/test/labeltest@sha256:${DIGEST#sha256:}
+if ! podman tag localhost:5000/test/labeltest:latest localhost:5000/test/labeltest@sha256:${DIGEST#sha256:}; then
+    echo "Failed to tag with digest"
+    exit 1
+fi
 
 echo "Test registry setup complete!"
 echo "Registry URL: localhost:5000"
