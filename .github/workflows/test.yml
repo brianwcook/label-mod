@@ -42,6 +42,7 @@ jobs:
       - name: Build
         run: |
           make build
+          chmod +x bin/label-mod
 
       - name: Setup test registry
         run: |
@@ -53,11 +54,17 @@ jobs:
           cat ~/.config/containers/registries.conf
           echo "=== Starting test registry ==="
           ./scripts/setup-test-registry.sh
+          echo "=== Registry accessibility test ==="
+          curl -s http://localhost:5000/v2/ || echo "Registry not accessible"
+          echo "=== Registry catalog ==="
+          curl -s http://localhost:5000/v2/_catalog || echo "No catalog available"
 
       - name: Run tests
         run: |
           echo "=== Test binary ==="
           ls -la bin/
+          echo "=== Test binary help ==="
+          ./bin/label-mod --help || true
           echo "=== Running tests ==="
           go test -v
 
