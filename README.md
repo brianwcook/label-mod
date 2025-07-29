@@ -1,29 +1,23 @@
-# Remove OCI Labels
+# label-mod
 
-This project provides tools to remove and update labels on container images using the registry API directly, without pulling large image blobs. This is particularly useful when dealing with very large images (>50GB) or when container runtime tools like `buildah` and `skopeo` are not available due to uid/gid issues.
+A Go-based tool to remove and update labels on container images using the registry API directly, without pulling large image blobs. This is particularly useful when dealing with very large images (>50GB) or when container runtime tools like `buildah` and `skopeo` are not available due to uid/gid issues.
 
 ## Features
 
 - **No image blob downloads**: Works directly with the registry API
 - **Label removal**: Remove specific labels from container images
 - **Label updates**: Update existing labels or add new ones
-- **Multiple formats**: Available as both Go program and shell script
+- **Digest reference support**: Works with both tag and digest references
+- **Multiple tagging**: Support for tagging with multiple tags
+- **JSON output**: Structured output for programmatic use
 - **Authentication support**: Works with Quay and other registries
 
 ## Prerequisites
 
-### For Go version:
 - Go 1.21 or later
-- `jq` (for JSON processing)
-
-### For Shell script version:
-- `curl`
-- `jq`
-- `bash`
+- podman (for local testing)
 
 ## Installation
-
-### Go Version
 
 1. Clone or download the files
 2. Install dependencies:
@@ -32,14 +26,11 @@ This project provides tools to remove and update labels on container images usin
    ```
 3. Build the program:
    ```bash
-   go build -o remove-labels main.go
+   make build
    ```
-
-### Shell Script Version
-
-1. Make the script executable (already done):
+   Or manually:
    ```bash
-   chmod +x remove-labels.sh
+   go build -o bin/label-mod main.go
    ```
 
 ## Configuration
@@ -58,30 +49,18 @@ export REGISTRY_PASSWORD="your-password"
 
 ## Usage
 
-### Go Version
-
 ```bash
 # Remove labels
-go run main.go remove-labels <image> <label1> [label2] ...
+./bin/label-mod remove-labels <image> <label1> [label2] ... [--tag <new-tag>]
 
 # Update labels
-go run main.go update-labels <image> <key=value> [key=value] ...
+./bin/label-mod update-labels <image> <key=value> [key=value] ... [--tag <new-tag>]
+
+# Modify labels (remove and update in one command)
+./bin/label-mod modify-labels <image> [--remove <label1>] [--update <key=value>] [--tag <new-tag>]
 
 # Test image (view current labels)
-go run main.go test <image>
-```
-
-### Shell Script Version
-
-```bash
-# Remove labels
-./remove-labels.sh remove-labels <image> <label1> [label2] ...
-
-# Update labels
-./remove-labels.sh update-labels <image> <key=value> [key=value] ...
-
-# Test image (view current labels)
-./remove-labels.sh test <image>
+./bin/label-mod test <image>
 ```
 
 ## Examples
@@ -89,33 +68,59 @@ go run main.go test <image>
 ### Remove expiration label from your target image:
 
 ```bash
-# Using Go version
-go run main.go remove-labels quay.io/redhat-user-workloads/bcook-tenant/simple-container-a9695:tree-b83d54e2488749d83c2bd81dfcb9ed4bef28656d quay.expires-after
-
-# Using shell script
-./remove-labels.sh remove-labels quay.io/redhat-user-workloads/bcook-tenant/simple-container-a9695:tree-b83d54e2488749d83c2bd81dfcb9ed4bef28656d quay.expires-after
+./bin/label-mod remove-labels quay.io/redhat-user-workloads/bcook-tenant/simple-container-a9695:tree-b83d54e2488749d83c2bd81dfcb9ed4bef28656d quay.expires-after
 ```
 
 ### Test with your test images:
 
 ```bash
 # Test current labels
-./remove-labels.sh test quay.io/bcook/labeltest/test:latest
+./bin/label-mod test quay.io/bcook/labeltest/test:latest
 
 # Remove a label
-./remove-labels.sh remove-labels quay.io/bcook/labeltest/test:latest quay.expires-after
+./bin/label-mod remove-labels quay.io/bcook/labeltest/test:latest quay.expires-after
 
 # Update a label
-./remove-labels.sh update-labels quay.io/bcook/labeltest/test:latest quay.expires-after=2024-12-31
+./bin/label-mod update-labels quay.io/bcook/labeltest/test:latest quay.expires-after=2024-12-31
 ```
 
 ### Update multiple labels:
 
 ```bash
-./remove-labels.sh update-labels quay.io/bcook/labeltest/test:latest \
+./bin/label-mod update-labels quay.io/bcook/labeltest/test:latest \
   quay.expires-after=2024-12-31 \
   maintainer=bcook@redhat.com \
   version=1.0.0
+```
+
+### Work with digest references:
+
+```bash
+# Test digest reference
+./bin/label-mod test quay.io/repo/image@sha256:abc123...
+
+# Remove label with new tag
+./bin/label-mod remove-labels quay.io/repo/image@sha256:abc123... label-name --tag new-tag
+
+# Update label with digest reference
+./bin/label-mod update-labels quay.io/repo/image@sha256:abc123... new.label=value --tag updated
+```
+
+### Multiple tagging:
+
+```bash
+# Tag with multiple tags
+./bin/label-mod update-labels quay.io/repo/image:latest new.label=value --tag v1.0 --tag latest --tag stable
+```
+
+### Combined operations:
+
+```bash
+# Remove and update labels in one command
+./bin/label-mod modify-labels quay.io/repo/image:latest \
+  --remove old.label \
+  --update new.label=value \
+  --tag modified
 ```
 
 ## Testing
@@ -239,7 +244,7 @@ If you get network errors:
 
 If you get permission errors:
 
-1. Ensure the script is executable: `chmod +x remove-labels.sh`
+1. Ensure the binary is executable: `chmod +x bin/label-mod`
 2. Check that you have write permissions to the repository
 3. Verify your account has push access to the registry
 
