@@ -32,22 +32,22 @@ type Result struct {
 	Removed   []string          `json:"removed,omitempty"`
 	Updated   map[string]string `json:"updated,omitempty"`
 	Current   map[string]string `json:"current,omitempty"`
-	TaggedAs  string            `json:"tagged_as,omitempty"`
+	TaggedAs  []string          `json:"tagged_as,omitempty"`
 }
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: ./label-mod <command>")
 		fmt.Println("Commands:")
-		fmt.Println("  remove-labels <image> <label1> [label2] ... [--tag <new-tag>]")
-		fmt.Println("  update-labels <image> <key=value> [key=value] ... [--tag <new-tag>]")
-		fmt.Println("  modify-labels <image> [--remove <label1>] [--remove <label2>] [--update <key=value>] [--update <key=value>] [--tag <new-tag>]")
+		fmt.Println("  remove-labels <image> <label1> [label2] ... [--tag <new-tag>] [--tag <another-tag>] ...")
+		fmt.Println("  update-labels <image> <key=value> [key=value] ... [--tag <new-tag>] [--tag <another-tag>] ...")
+		fmt.Println("  modify-labels <image> [--remove <label1>] [--remove <label2>] [--update <key=value>] [--update <key=value>] [--tag <new-tag>] [--tag <another-tag>] ...")
 		fmt.Println("  test <image>")
 		fmt.Println("Example:")
 		fmt.Println("  ./label-mod remove-labels quay.io/bcook/labeltest/test:latest quay.expires-after")
-		fmt.Println("  ./label-mod remove-labels quay.io/bcook/labeltest/test:latest quay.expires-after --tag no-expiry")
-		fmt.Println("  ./label-mod update-labels quay.io/bcook/labeltest/test:latest quay.expires-after=2024-12-31 --tag updated")
-		fmt.Println("  ./label-mod modify-labels quay.io/bcook/labeltest/test:latest --remove quay.expires-after --update test.label=new-value --tag modified")
+		fmt.Println("  ./label-mod remove-labels quay.io/bcook/labeltest/test:latest quay.expires-after --tag no-expiry --tag latest")
+		fmt.Println("  ./label-mod update-labels quay.io/bcook/labeltest/test:latest quay.expires-after=2024-12-31 --tag updated --tag v1.0")
+		fmt.Println("  ./label-mod modify-labels quay.io/bcook/labeltest/test:latest --remove quay.expires-after --update test.label=new-value --tag modified --tag stable")
 		os.Exit(1)
 	}
 
@@ -61,8 +61,8 @@ func main() {
 		}
 		image := os.Args[2]
 		args := os.Args[3:]
-		labelsToRemove, newTag := parseArgs(args)
-		result := removeLabels(image, labelsToRemove, newTag)
+		labelsToRemove, newTags := parseArgs(args)
+		result := removeLabels(image, labelsToRemove, newTags)
 		outputJSON(result)
 
 	case "update-labels":
@@ -72,8 +72,8 @@ func main() {
 		}
 		image := os.Args[2]
 		args := os.Args[3:]
-		labelUpdates, newTag := parseUpdateArgs(args)
-		result := updateLabels(image, labelUpdates, newTag)
+		labelUpdates, newTags := parseUpdateArgs(args)
+		result := updateLabels(image, labelUpdates, newTags)
 		outputJSON(result)
 
 	case "modify-labels":
@@ -83,8 +83,8 @@ func main() {
 		}
 		image := os.Args[2]
 		args := os.Args[3:]
-		labelsToRemove, labelUpdates, newTag := parseModifyArgs(args)
-		result := modifyLabels(image, labelsToRemove, labelUpdates, newTag)
+		labelsToRemove, labelUpdates, newTags := parseModifyArgs(args)
+		result := modifyLabels(image, labelsToRemove, labelUpdates, newTags)
 		outputJSON(result)
 
 	case "test":
@@ -115,29 +115,29 @@ func outputJSON(result Result) {
 	}
 }
 
-func parseArgs(args []string) ([]string, string) {
+func parseArgs(args []string) ([]string, []string) {
 	var labelsToRemove []string
-	var newTag string
+	var newTags []string
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--tag" && i+1 < len(args) {
-			newTag = args[i+1]
+			newTags = append(newTags, args[i+1])
 			i++ // skip the tag value
 		} else {
 			labelsToRemove = append(labelsToRemove, args[i])
 		}
 	}
 
-	return labelsToRemove, newTag
+	return labelsToRemove, newTags
 }
 
-func parseUpdateArgs(args []string) (map[string]string, string) {
+func parseUpdateArgs(args []string) (map[string]string, []string) {
 	updates := make(map[string]string)
-	var newTag string
+	var newTags []string
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--tag" && i+1 < len(args) {
-			newTag = args[i+1]
+			newTags = append(newTags, args[i+1])
 			i++ // skip the tag value
 		} else {
 			parts := strings.SplitN(args[i], "=", 2)
@@ -147,13 +147,13 @@ func parseUpdateArgs(args []string) (map[string]string, string) {
 		}
 	}
 
-	return updates, newTag
+	return updates, newTags
 }
 
-func parseModifyArgs(args []string) ([]string, map[string]string, string) {
+func parseModifyArgs(args []string) ([]string, map[string]string, []string) {
 	var labelsToRemove []string
 	var labelUpdates map[string]string
-	var newTag string
+	var newTags []string
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--remove" && i+1 < len(args) {
@@ -169,15 +169,15 @@ func parseModifyArgs(args []string) ([]string, map[string]string, string) {
 			}
 			i++ // skip the update value
 		} else if args[i] == "--tag" && i+1 < len(args) {
-			newTag = args[i+1]
+			newTags = append(newTags, args[i+1])
 			i++ // skip the tag value
 		}
 	}
 
-	return labelsToRemove, labelUpdates, newTag
+	return labelsToRemove, labelUpdates, newTags
 }
 
-func removeLabels(imageRef string, labelsToRemove []string, newTag string) Result {
+func removeLabels(imageRef string, labelsToRemove []string, newTags []string) Result {
 	result := Result{
 		ImageRef: imageRef,
 		Removed:  []string{},
@@ -256,26 +256,29 @@ func removeLabels(imageRef string, labelsToRemove []string, newTag string) Resul
 	result.NewDigest = digest.String()
 	result.Success = true
 
-	// If a new tag was specified, tag the image
-	if newTag != "" {
-		newRef, err := name.NewTag(fmt.Sprintf("%s:%s", ref.Context().String(), newTag))
-		if err != nil {
-			result.Error = fmt.Sprintf("Error creating new tag reference: %v", err)
-			return result
-		}
+	// If new tags were specified, tag the image
+	if len(newTags) > 0 {
+		result.TaggedAs = make([]string, 0, len(newTags))
+		for _, tag := range newTags {
+			newRef, err := name.NewTag(fmt.Sprintf("%s:%s", ref.Context().String(), tag))
+			if err != nil {
+				result.Error = fmt.Sprintf("Error creating new tag reference: %v", err)
+				return result
+			}
 
-		if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
-			result.Error = fmt.Sprintf("Error tagging image: %v", err)
-			return result
-		}
+			if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
+				result.Error = fmt.Sprintf("Error tagging image: %v", err)
+				return result
+			}
 
-		result.TaggedAs = newRef.String()
+			result.TaggedAs = append(result.TaggedAs, newRef.String())
+		}
 	}
 
 	return result
 }
 
-func updateLabels(imageRef string, labelUpdates map[string]string, newTag string) Result {
+func updateLabels(imageRef string, labelUpdates map[string]string, newTags []string) Result {
 	result := Result{
 		ImageRef: imageRef,
 		Updated:  make(map[string]string),
@@ -349,26 +352,29 @@ func updateLabels(imageRef string, labelUpdates map[string]string, newTag string
 	result.NewDigest = digest.String()
 	result.Success = true
 
-	// If a new tag was specified, tag the image
-	if newTag != "" {
-		newRef, err := name.NewTag(fmt.Sprintf("%s:%s", ref.Context().String(), newTag))
-		if err != nil {
-			result.Error = fmt.Sprintf("Error creating new tag reference: %v", err)
-			return result
-		}
+	// If new tags were specified, tag the image
+	if len(newTags) > 0 {
+		result.TaggedAs = make([]string, 0, len(newTags))
+		for _, tag := range newTags {
+			newRef, err := name.NewTag(fmt.Sprintf("%s:%s", ref.Context().String(), tag))
+			if err != nil {
+				result.Error = fmt.Sprintf("Error creating new tag reference: %v", err)
+				return result
+			}
 
-		if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
-			result.Error = fmt.Sprintf("Error tagging image: %v", err)
-			return result
-		}
+			if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
+				result.Error = fmt.Sprintf("Error tagging image: %v", err)
+				return result
+			}
 
-		result.TaggedAs = newRef.String()
+			result.TaggedAs = append(result.TaggedAs, newRef.String())
+		}
 	}
 
 	return result
 }
 
-func modifyLabels(imageRef string, labelsToRemove []string, labelUpdates map[string]string, newTag string) Result {
+func modifyLabels(imageRef string, labelsToRemove []string, labelUpdates map[string]string, newTags []string) Result {
 	result := Result{
 		ImageRef: imageRef,
 		Removed:  []string{},
@@ -451,20 +457,23 @@ func modifyLabels(imageRef string, labelsToRemove []string, labelUpdates map[str
 	result.NewDigest = digest.String()
 	result.Success = true
 
-	// If a new tag was specified, tag the image
-	if newTag != "" {
-		newRef, err := name.NewTag(fmt.Sprintf("%s:%s", ref.Context().String(), newTag))
-		if err != nil {
-			result.Error = fmt.Sprintf("Error creating new tag reference: %v", err)
-			return result
-		}
+	// If new tags were specified, tag the image
+	if len(newTags) > 0 {
+		result.TaggedAs = make([]string, 0, len(newTags))
+		for _, tag := range newTags {
+			newRef, err := name.NewTag(fmt.Sprintf("%s:%s", ref.Context().String(), tag))
+			if err != nil {
+				result.Error = fmt.Sprintf("Error creating new tag reference: %v", err)
+				return result
+			}
 
-		if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
-			result.Error = fmt.Sprintf("Error tagging image: %v", err)
-			return result
-		}
+			if err := remote.Write(newRef, newImg, remote.WithAuth(auth)); err != nil {
+				result.Error = fmt.Sprintf("Error tagging image: %v", err)
+				return result
+			}
 
-		result.TaggedAs = newRef.String()
+			result.TaggedAs = append(result.TaggedAs, newRef.String())
+		}
 	}
 
 	return result

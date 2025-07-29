@@ -36,7 +36,7 @@ func getTestConfig() TestConfig {
 
 // runCommand executes a command and returns the result
 func runCommand(args ...string) (string, error) {
-	cmd := exec.Command("./label-mod", args...)
+	cmd := exec.Command("./bin/label-mod", args...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
@@ -425,17 +425,17 @@ func TestLabelModWithTagging(t *testing.T) {
 		t.Fatalf("Update with tagging failed: %s", result.Error)
 	}
 
-	if result.TaggedAs == "" {
+	if len(result.TaggedAs) == 0 {
 		t.Error("Expected tagged_as to be set")
 	}
 
 	expectedTag := fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], testTag)
-	if result.TaggedAs != expectedTag {
-		t.Errorf("Expected tagged_as %s, got %s", expectedTag, result.TaggedAs)
+	if len(result.TaggedAs) != 1 || result.TaggedAs[0] != expectedTag {
+		t.Errorf("Expected tagged_as %s, got %v", expectedTag, result.TaggedAs)
 	}
 
 	// Verify the tagged image
-	output, err = runCommand("test", result.TaggedAs)
+	output, err = runCommand("test", result.TaggedAs[0])
 	if err != nil {
 		t.Fatalf("Failed to verify tagged image: %v", err)
 	}
@@ -455,6 +455,80 @@ func TestLabelModWithTagging(t *testing.T) {
 
 	if verifyResult.Current[testKey] != testValue {
 		t.Errorf("Expected tagged image label value %s, got %s", testValue, verifyResult.Current[testKey])
+	}
+}
+
+func TestLabelModMultipleTags(t *testing.T) {
+	config := getTestConfig()
+	imageRef := ensureTestImage(t, config)
+	if imageRef == "" {
+		return
+	}
+
+	testKey := fmt.Sprintf("test.multi.tag.%d", time.Now().Unix())
+	testValue := "multi-tag-value"
+	tag1 := fmt.Sprintf("multi-tag1-%d", time.Now().Unix())
+	tag2 := fmt.Sprintf("multi-tag2-%d", time.Now().Unix())
+	tag3 := fmt.Sprintf("multi-tag3-%d", time.Now().Unix())
+
+	// Update with multiple tags
+	output, err := runCommand("update-labels", imageRef, fmt.Sprintf("%s=%s", testKey, testValue), "--tag", tag1, "--tag", tag2, "--tag", tag3)
+	if err != nil {
+		t.Fatalf("Update with multiple tags command failed: %v", err)
+	}
+
+	result, err := parseJSONResult(output)
+	if err != nil {
+		t.Fatalf("Failed to parse update with multiple tags result: %v", err)
+	}
+
+	if !result.Success {
+		t.Fatalf("Update with multiple tags failed: %s", result.Error)
+	}
+
+	if len(result.TaggedAs) != 3 {
+		t.Errorf("Expected 3 tagged images, got %d", len(result.TaggedAs))
+	}
+
+	expectedTags := []string{
+		fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], tag1),
+		fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], tag2),
+		fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], tag3),
+	}
+
+	for i, expectedTag := range expectedTags {
+		if i >= len(result.TaggedAs) {
+			t.Errorf("Expected tag %s at position %d, but not found", expectedTag, i)
+			continue
+		}
+		if result.TaggedAs[i] != expectedTag {
+			t.Errorf("Expected tagged_as[%d] %s, got %s", i, expectedTag, result.TaggedAs[i])
+		}
+	}
+
+	// Verify all tagged images
+	for i, taggedImage := range result.TaggedAs {
+		output, err := runCommand("test", taggedImage)
+		if err != nil {
+			t.Fatalf("Failed to verify tagged image %d: %v", i, err)
+		}
+
+		verifyResult, err := parseJSONResult(output)
+		if err != nil {
+			t.Fatalf("Failed to parse tagged image %d result: %v", i, err)
+		}
+
+		if !verifyResult.Success {
+			t.Fatalf("Tagged image %d verification failed: %s", i, verifyResult.Error)
+		}
+
+		if verifyResult.NewDigest != result.NewDigest {
+			t.Errorf("Expected tagged image %d digest %s, got %s", i, result.NewDigest, verifyResult.NewDigest)
+		}
+
+		if verifyResult.Current[testKey] != testValue {
+			t.Errorf("Expected tagged image %d label value %s, got %s", i, testValue, verifyResult.Current[testKey])
+		}
 	}
 }
 
