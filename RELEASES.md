@@ -2,28 +2,47 @@
 
 This document describes how to create releases for the `label-mod` tool.
 
-## Automated Releases
+## Manual Releases
 
 ### GitHub Actions
 
-The repository includes GitHub Actions workflows for automated releases:
+The repository includes GitHub Actions workflows for manual releases:
 
 - **`.github/workflows/test.yml`** - Runs tests on pull requests and pushes
-- **`.github/workflows/release.yml`** - Creates releases when tags are pushed
+- **`.github/workflows/build.yml`** - Builds binaries without creating releases
+- **`.github/workflows/release.yml`** - Creates releases manually
 
 ### Creating a Release
 
-1. **Create and push a tag:**
+#### Option 1: Manual GitHub Release
+
+1. **Build binaries locally:**
    ```bash
-   git tag -a v1.0.0 -m "Release v1.0.0"
-   git push origin v1.0.0
+   ./scripts/release.sh 1.0.0
    ```
 
-2. **GitHub Actions will automatically:**
-   - Build for all platforms (Linux AMD64/ARM64, Darwin AMD64/ARM64)
-   - Run tests
-   - Create a GitHub release with all binaries
-   - Generate release notes
+2. **Create GitHub release:**
+   ```bash
+   gh release create v1.0.0 bin/*.tar.gz --title "Release v1.0.0" --notes "Release notes"
+   ```
+
+#### Option 2: GitHub Actions (Manual Trigger)
+
+1. **Go to GitHub Actions tab**
+2. **Select "Release" workflow**
+3. **Click "Run workflow"**
+4. **Enter version (e.g., v1.0.0)**
+5. **Choose whether to create GitHub release**
+6. **Click "Run workflow"**
+
+#### Option 3: Build Only (No Release)
+
+1. **Go to GitHub Actions tab**
+2. **Select "Build" workflow**
+3. **Click "Run workflow"**
+4. **Enter version (e.g., v1.0.0)**
+5. **Click "Run workflow"**
+6. **Download artifacts from the workflow run**
 
 ## Manual Releases
 

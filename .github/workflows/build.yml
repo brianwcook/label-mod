@@ -1,21 +1,16 @@
-name: Release
+name: Build
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., v1.0.0)'
+        description: 'Build version (e.g., v1.0.0)'
         required: true
         type: string
-      create_release:
-        description: 'Create GitHub release'
-        required: false
-        type: boolean
-        default: true
 
 jobs:
   build:
-    name: Build and Release
+    name: Build Binaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -30,9 +25,6 @@ jobs:
         id: version
         run: |
           VERSION=${{ github.event.inputs.version }}
-          if [ -z "$VERSION" ]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
@@ -64,24 +56,16 @@ jobs:
         run: |
           go test -v
 
-      - name: Create Release
-        if: ${{ github.event.inputs.create_release == 'true' }}
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            bin/label-mod-linux-amd64-${{ steps.version.outputs.version }}.tar.gz
-            bin/label-mod-linux-arm64-${{ steps.version.outputs.version }}.tar.gz
-            bin/label-mod-darwin-amd64-${{ steps.version.outputs.version }}.tar.gz
-            bin/label-mod-darwin-arm64-${{ steps.version.outputs.version }}.tar.gz
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: List artifacts
+        run: |
+          echo "Built binaries:"
+          ls -la bin/
+          echo ""
+          echo "Release archives:"
+          ls -la bin/*.tar.gz
 
       - name: Upload artifacts
-        if: ${{ github.event.inputs.create_release != 'true' }}
         uses: actions/upload-artifact@v3
         with:
-          name: release-binaries-${{ steps.version.outputs.version }}
+          name: binaries-${{ steps.version.outputs.version }}
           path: bin/*.tar.gz 
