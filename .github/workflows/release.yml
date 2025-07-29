@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build for Linux AMD64
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/label-mod-linux-amd64 main.go
+
+      - name: Build for Linux ARM64
+        run: |
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/label-mod-linux-arm64 main.go
+
+      - name: Build for Darwin AMD64
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/label-mod-darwin-amd64 main.go
+
+      - name: Build for Darwin ARM64
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/label-mod-darwin-arm64 main.go
+
+      - name: Create release archives
+        run: |
+          cd bin
+          tar -czf label-mod-linux-amd64-${{ steps.version.outputs.version }}.tar.gz label-mod-linux-amd64
+          tar -czf label-mod-linux-arm64-${{ steps.version.outputs.version }}.tar.gz label-mod-linux-arm64
+          tar -czf label-mod-darwin-amd64-${{ steps.version.outputs.version }}.tar.gz label-mod-darwin-amd64
+          tar -czf label-mod-darwin-arm64-${{ steps.version.outputs.version }}.tar.gz label-mod-darwin-arm64
+
+      - name: Run tests
+        run: |
+          go test -v
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            bin/label-mod-linux-amd64-${{ steps.version.outputs.version }}.tar.gz
+            bin/label-mod-linux-arm64-${{ steps.version.outputs.version }}.tar.gz
+            bin/label-mod-darwin-amd64-${{ steps.version.outputs.version }}.tar.gz
+            bin/label-mod-darwin-arm64-${{ steps.version.outputs.version }}.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
