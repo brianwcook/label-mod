@@ -88,13 +88,7 @@ if [ -z "$DIGEST" ]; then
 fi
 echo "Image digest: $DIGEST"
 
-# Tag with digest
-if ! podman tag localhost:5000/test/labeltest:latest localhost:5000/test/labeltest@sha256:${DIGEST#sha256:}; then
-    echo "Failed to tag with digest"
-    exit 1
-fi
-
 echo "Test registry setup complete!"
 echo "Registry URL: localhost:5000"
 echo "Test image: localhost:5000/test/labeltest:latest"
-echo "Test digest: localhost:5000/test/labeltest@sha256:${DIGEST#sha256:}" 
+echo "Test digest reference: localhost:5000/test/labeltest@${DIGEST}" 
