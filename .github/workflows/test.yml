@@ -19,13 +19,38 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Install podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Configure podman for local registry
+        run: |
+          mkdir -p ~/.config/containers
+          cat > ~/.config/containers/registries.conf << 'EOF'
+          unqualified-search-registries = ["docker.io"]
+          
+          [[registry]]
+          location = "localhost:5000"
+          insecure = true
+          EOF
+
       - name: Build
         run: |
           make build
 
+      - name: Setup test registry
+        run: |
+          ./scripts/setup-test-registry.sh
+
       - name: Run tests
         run: |
-          make test
+          go test -v
+
+      - name: Cleanup test registry
+        if: always()
+        run: |
+          ./scripts/cleanup-test-registry.sh
 
       - name: Build all platforms
         run: |

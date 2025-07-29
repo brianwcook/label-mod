@@ -20,12 +20,12 @@ type TestConfig struct {
 func getTestConfig() TestConfig {
 	repo := os.Getenv("LABEL_MOD_TEST_REPO")
 	if repo == "" {
-		repo = "quay.io/bcook/labeltest/test"
+		repo = "localhost:5000/test/labeltest"
 	}
 
 	tag := os.Getenv("LABEL_MOD_TEST_TAG")
 	if tag == "" {
-		tag = fmt.Sprintf("test-%d", time.Now().Unix())
+		tag = "latest"
 	}
 
 	return TestConfig{
@@ -68,8 +68,8 @@ func ensureTestImage(t *testing.T, config TestConfig) string {
 	}
 
 	// Image doesn't exist or doesn't have labels, we need to create one
-	// For now, we'll use a known image that should exist
-	fallbackImage := "quay.io/bcook/labeltest/test:has-label"
+	// For local registry, we'll use the default image
+	fallbackImage := "localhost:5000/test/labeltest:latest"
 
 	output, err = runCommand("test", fallbackImage)
 	if err != nil {
@@ -429,7 +429,7 @@ func TestLabelModWithTagging(t *testing.T) {
 		t.Error("Expected tagged_as to be set")
 	}
 
-	expectedTag := fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], testTag)
+	expectedTag := fmt.Sprintf("%s:%s", config.TestRepo, testTag)
 	if len(result.TaggedAs) != 1 || result.TaggedAs[0] != expectedTag {
 		t.Errorf("Expected tagged_as %s, got %v", expectedTag, result.TaggedAs)
 	}
@@ -491,9 +491,9 @@ func TestLabelModMultipleTags(t *testing.T) {
 	}
 
 	expectedTags := []string{
-		fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], tag1),
-		fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], tag2),
-		fmt.Sprintf("%s:%s", strings.Split(imageRef, ":")[0], tag3),
+		fmt.Sprintf("%s:%s", config.TestRepo, tag1),
+		fmt.Sprintf("%s:%s", config.TestRepo, tag2),
+		fmt.Sprintf("%s:%s", config.TestRepo, tag3),
 	}
 
 	for i, expectedTag := range expectedTags {
